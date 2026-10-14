@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seat Booking - 2D Array Demo</title>
+<style>
+  :root{
+    --ink:#12152a; --panel:#1b1f3a; --velvet:#4a1d45; --brass:#e0b86a;
+    --free:#3d4574; --taken:#2a2c40; --text:#ece8f2; --muted:#9a9cb8;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--ink);color:var(--text);font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;padding:20px 14px 40px;max-width:560px;margin:auto}
+  h1{font-family:Georgia,"Palatino Linotype",serif;font-weight:400;font-size:1.7rem;letter-spacing:.01em}
+  .sub{color:var(--muted);font-size:.9rem;margin:4px 0 18px}
+  .screen{height:26px;margin:0 8% 22px;border-top:3px solid var(--brass);border-radius:50% 50% 0 0/100% 100% 0 0;
+    background:linear-gradient(to bottom,rgba(224,184,106,.18),transparent);text-align:center;font-size:.7rem;color:var(--muted);padding-top:6px}
+  .row{display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:6px}
+  .lbl{width:16px;font-size:.75rem;color:var(--muted);text-align:center}
+  .seat{width:27px;height:25px;border:0;border-radius:7px 7px 3px 3px;background:var(--free);cursor:pointer;transition:transform .12s,background .12s}
+  .seat:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+  .seat:active{transform:scale(.88)}
+  .seat.taken{background:var(--taken);cursor:not-allowed;opacity:.55}
+  .seat.sel{background:var(--brass);transform:translateY(-2px)}
+  .aisle{width:14px}
+  .legend{display:flex;gap:14px;justify-content:center;font-size:.75rem;color:var(--muted);margin:14px 0 18px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .card{background:var(--panel);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+  .card h2{font-family:Georgia,serif;font-weight:400;font-size:1.05rem;margin-bottom:8px}
+  .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  select,button.act{background:var(--ink);color:var(--text);border:1px solid #3a3f6a;border-radius:9px;padding:9px 12px;font-size:.9rem}
+  button.act{cursor:pointer}
+  button.primary{background:var(--brass);color:#2a1f08;border-color:var(--brass);font-weight:600}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .sum{font-size:.95rem;line-height:1.55}
+  .sum b{color:var(--brass);font-weight:600}
+  .tiers{font-size:.78rem;color:var(--muted);margin-top:6px}
+  pre{font-family:ui-monospace,Menlo,monospace;font-size:.78rem;line-height:1.35;color:var(--muted);overflow-x:auto;white-space:pre}
+  #msg{min-height:1.2em;font-size:.85rem;color:var(--brass);margin-top:8px}
+  @media (prefers-reduced-motion:reduce){.seat{transition:none}}
+</style>
+</head>
+<body>
+<h1>Pick your seats</h1>
+<p class="sub">Every seat is one cell in a 2D array: <code>seats[row][col]</code></p>
+
+<div class="screen">SCREEN</div>
+<div id="hall" role="group" aria-label="Seat map"></div>
+
+<div class="legend">
+  <span><i style="background:var(--free)"></i>Open</span>
+  <span><i style="background:var(--brass)"></i>Yours</span>
+  <span><i style="background:var(--taken);opacity:.6"></i>Taken</span>
+</div>
+
+<div class="card">
+  <h2>Find seats together</h2>
+  <div class="tools">
+    <select id="party" aria-label="Party size">
+      <option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option>
+    </select>
+    <button class="act" id="best">Find best seats</button>
+    <button class="act" id="clear">Clear</button>
+  </div>
+  <div id="msg" role="status"></div>
+</div>
+
+<div class="card">
+  <h2>Your booking</h2>
+  <div class="sum" id="sum">No seats chosen yet.</div>
+  <div class="tiers">Rows A-B $9 &middot; Rows C-F $14 &middot; Rows G-H $11</div>
+  <div style="margin-top:12px"><button class="act primary" id="book" disabled>Book seats</button></div>
+</div>
+
+<div class="card">
+  <h2>The array behind it</h2>
+  <pre id="dump"></pre>
+  <div class="tiers">0 = open &nbsp; 1 = taken &nbsp; 2 = selected</div>
+</div>
+
+<script>
+// ---- Data structure: a 2D array. 0 = open, 1 = taken, 2 = selected ----
+const ROWS = 8, COLS = 10;
+const rowName = r => String.fromCharCode(65 + r);
+const price = r => r < 2 ? 9 : r < 6 ? 14 : 11;
+
+// Build the grid and pre-fill some taken seats
+const seats = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+for (let i = 0; i < 26; i++) seats[Math.floor(Math.random()*ROWS)][Math.floor(Math.random()*COLS)] = 1;
+
+const hall = document.getElementById('hall');
+
+function render() {
+  hall.innerHTML = '';
+  seats.forEach((row, r) => {
+    const div = document.createElement('div');
+    div.className = 'row';
+    div.innerHTML = `<span class="lbl">${rowName(r)}</span>`;
+    row.forEach((state, c) => {
+      if (c === COLS / 2) { const a = document.createElement('span'); a.className = 'aisle'; div.appendChild(a); }
+      const b = document.createElement('button');
+      b.className = 'seat' + (state === 1 ? ' taken' : state === 2 ? ' sel' : '');
+      b.setAttribute('aria-label', `Seat ${rowName(r)}${c+1}, ${['open','taken','selected'][state]}`);
+      b.disabled = state === 1;
+      b.onclick = () => { seats[r][c] = state === 2 ? 0 : 2; render(); };
+      div.appendChild(b);
+    });
+    hall.appendChild(div);
+  });
+  summarize();
+  document.getElementById('dump').textContent =
+    '[\n' + seats.map(r => ' [' + r.join(',') + ']').join(',\n') + '\n]';
+}
+
+function chosen() {
+  const out = [];
+  seats.forEach((row, r) => row.forEach((s, c) => { if (s === 2) out.push([r, c]); }));
+  return out;
+}
+
+function summarize() {
+  const list = chosen();
+  const sum = document.getElementById('sum');
+  document.getElementById('book').disabled = list.length === 0;
+  if (!list.length) { sum.textContent = 'No seats chosen yet.'; return; }
+  const total = list.reduce((t, [r]) => t + price(r), 0);
+  sum.innerHTML = `Seats: <b>${list.map(([r,c]) => rowName(r)+(c+1)).join(', ')}</b><br>Total: <b>$${total}</b>`;
+}
+
+// Scan each row for `n` consecutive open cells; prefer rows near the middle and seats near the center column
+function findBest(n) {
+  let best = null, bestScore = Infinity;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c + n <= COLS; c++) {
+      let ok = true;
+      for (let k = 0; k < n; k++) if (seats[r][c+k] !== 0) { ok = false; break; }
+      if (!ok) continue;
+      const score = Math.abs(r - 4) * 2 + Math.abs((c + (n-1)/2) - (COLS-1)/2);
+      if (score < bestScore) { bestScore = score; best = [r, c]; }
+    }
+  }
+  return best;
+}
+
+function clearSelection() {
+  seats.forEach(row => row.forEach((s, c) => { if (s === 2) row[c] = 0; }));
+}
+
+document.getElementById('best').onclick = () => {
+  const n = +document.getElementById('party').value;
+  clearSelection();
+  const spot = findBest(n);
+  const msg = document.getElementById('msg');
+  if (!spot) { msg.textContent = `No ${n} seats together. Try a smaller group.`; render(); return; }
+  for (let k = 0; k < n; k++) seats[spot[0]][spot[1]+k] = 2;
+  msg.textContent = `Found ${n} together in row ${rowName(spot[0])}.`;
+  render();
+};
+
+document.getElementById('clear').onclick = () => { clearSelection(); document.getElementById('msg').textContent = ''; render(); };
+
+document.getElementById('book').onclick = () => {
+  const list = chosen();
+  list.forEach(([r, c]) => seats[r][c] = 1);
+  document.getElementById('msg').textContent = `Booked ${list.length} seat${list.length>1?'s':''}. Enjoy the film.`;
+  render();
+};
+
+render();
+</script>
+</body>
+</html>
